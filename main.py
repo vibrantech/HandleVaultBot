@@ -1,30 +1,36 @@
-# main.py
-
 import os
 import asyncio
 import aiohttp
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 PLATFORMS = {
     "Telegram": "https://t.me/{}",
     "GitHub": "https://github.com/{}",
-    "Instagram": "https://www.instagram.com/{}",
+    "Instagram": "https://instagram.com/{}",
     "TikTok": "https://www.tiktok.com/@{}",
     "Twitter/X": "https://x.com/{}",
-    "Pinterest": "https://www.pinterest.com/{}",
-    "Reddit": "https://www.reddit.com/user/{}",
-    "Twitch": "https://www.twitch.tv/{}"
-}
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
+    "Pinterest": "https://pinterest.com/{}",
+    "Reddit": "https://reddit.com/user/{}",
+    "Twitch": "https://twitch.tv/{}"
 }
 
 
-async def check_platform(session, platform, url):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Welcome to HandleVault Bot\n\n"
+        "Use:\n"
+        "/check username"
+    )
+
+
+async def check_username(session, platform, url):
     try:
         async with session.get(url, timeout=10) as response:
             if response.status == 404:
@@ -33,83 +39,58 @@ async def check_platform(session, platform, url):
                 return f"❌ {platform}: Taken"
             else:
                 return f"⚠️ {platform}: Unknown"
-    except Exception:
+    except:
         return f"⚠️ {platform}: Error"
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "👋 Welcome to HandleVault Bot\n\n"
-        "Check username availability across platforms.\n\n"
-        "Usage:\n"
-        "/check username\n\n"
-        "Example:\n"
-        "/check vibrant"
-    )
-
-    await update.message.reply_text(text)
 
 
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "⚠️ Please enter a username.\n\nExample:\n/check vibrant"
+            "Usage:\n/check username"
         )
         return
 
-    username = context.args[0].replace("@", "").strip()
-
-    if len(username) < 3:
-        await update.message.reply_text(
-            "❌ Username must be at least 3 characters long."
-        )
-        return
+    username = context.args[0].replace("@", "")
 
     loading = await update.message.reply_text(
         f"🔍 Checking @{username}..."
     )
 
-    results = []
-
-    async with aiohttp.ClientSession(headers=HEADERS) as session:
+    async with aiohttp.ClientSession() as session:
 
         tasks = []
 
-        for platform, url in PLATFORMS.items():
+        for platform, base_url in PLATFORMS.items():
+
+            url = base_url.format(username)
+
             tasks.append(
-                check_platform(
-                    session,
-                    platform,
-                    url.format(username)
-                )
+                check_username(session, platform, url)
             )
 
-        responses = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
 
-        for result in responses:
-            results.append(result)
-
-    message = (
-        f"🌐 Username Results For @{username}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+    text = (
+        f"🌐 Results for @{username}\n\n"
         + "\n".join(results)
     )
 
-    await loading.edit_text(message)
+    await loading.edit_text(text)
 
 
 def main():
 
     if not BOT_TOKEN:
-        raise Exception("BOT_TOKEN environment variable not found.")
+        print("BOT_TOKEN is missing")
+        return
 
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check))
 
-    print("Bot Started Successfully")
+    print("Bot is running...")
 
     app.run_polling()
 
