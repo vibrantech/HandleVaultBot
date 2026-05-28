@@ -1,6 +1,8 @@
 import os
+import logging
 import asyncio
 import aiohttp
+
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -8,7 +10,15 @@ from telegram.ext import (
     ContextTypes,
 )
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# LOGGING
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
+logger = logging.getLogger(__name__)
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 PLATFORMS = {
     "Telegram": "https://t.me/{}",
@@ -23,39 +33,55 @@ PLATFORMS = {
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     await update.message.reply_text(
         "👋 Welcome to HandleVault Bot\n\n"
         "Use:\n"
-        "/check username"
+        "/check username\n\n"
+        "Example:\n"
+        "/check vibrant"
     )
 
 
-async def check_username(session, platform, url):
+async def check_platform(session, platform, url):
+
     try:
+
         async with session.get(url, timeout=10) as response:
+
             if response.status == 404:
                 return f"✅ {platform}: Available"
+
             elif response.status == 200:
                 return f"❌ {platform}: Taken"
+
             else:
                 return f"⚠️ {platform}: Unknown"
-    except:
+
+    except Exception as e:
+
+        logger.error(f"{platform} error: {e}")
+
         return f"⚠️ {platform}: Error"
 
 
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
+
         await update.message.reply_text(
             "Usage:\n/check username"
         )
+
         return
 
-    username = context.args[0].replace("@", "")
+    username = context.args[0].replace("@", "").strip()
 
     loading = await update.message.reply_text(
         f"🔍 Checking @{username}..."
     )
+
+    results = []
 
     async with aiohttp.ClientSession() as session:
 
@@ -66,23 +92,30 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url = base_url.format(username)
 
             tasks.append(
-                check_username(session, platform, url)
+                check_platform(
+                    session,
+                    platform,
+                    url
+                )
             )
 
         results = await asyncio.gather(*tasks)
 
-    text = (
-        f"🌐 Results for @{username}\n\n"
+    final_text = (
+        f"🌐 Username Results For @{username}\n"
+        f"━━━━━━━━━━━━━━━\n\n"
         + "\n".join(results)
     )
 
-    await loading.edit_text(text)
+    await loading.edit_text(final_text)
 
 
 def main():
 
     if not BOT_TOKEN:
-        print("BOT_TOKEN is missing")
+
+        logger.error("BOT_TOKEN not found")
+
         return
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -90,9 +123,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check))
 
-    print("Bot is running...")
+    logger.info("Bot started successfully")
 
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
